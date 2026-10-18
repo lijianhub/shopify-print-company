@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalogue Ops Demo</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #fff; --ink: #1d232b; --muted: #5d6773; --line: #dfe3e8;
+    --shop: #1f6f50; --shop-soft: #e5f2ec; --ops: #3b4fa8; --ops-soft: #e8ecfa;
+    --ok: #15803d; --ok-soft: #e7f5ec; --warn: #a16207; --warn-soft: #fdf6dc; --bad: #b91c1c; --bad-soft: #fde8e8;
+    --sel: #fff3c4; --mono: Consolas, "Courier New", monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #12161b; --panel: #1b2129; --ink: #e6e9ed; --muted: #9aa4b0; --line: #2d3540;
+    --shop: #4cc38a; --shop-soft: #16302a; --ops: #93a5f5; --ops-soft: #1e2647;
+    --ok: #4ade80; --ok-soft: #15301f; --warn: #facc15; --warn-soft: #352c10; --bad: #f87171; --bad-soft: #3a1818; --sel: #3a3312; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 "Segoe UI", Calibri, Arial, sans-serif; }
+  header { padding: 18px 24px 12px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: baseline; }
+  h1 { margin: 0; font-size: 22px; } .sub { color: var(--muted); margin-top: 2px; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap;
+          background: var(--line); color: var(--muted); }
+  .chip.ok { background: var(--ok-soft); color: var(--ok); } .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .chip.bad { background: var(--bad-soft); color: var(--bad); } .chip.shop { background: var(--shop-soft); color: var(--shop); }
+  .chip.ops { background: var(--ops-soft); color: var(--ops); }
+  .split { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.25fr); gap: 18px; padding: 0 24px 18px; align-items: start; }
+  @media (max-width: 1100px) { .split { grid-template-columns: 1fr; padding: 0 16px 16px; } header { padding: 16px; } }
+  .side { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .side-head { padding: 14px 16px; color: #fff; } .shop .side-head { background: var(--shop); } .ops .side-head { background: var(--ops); }
+  @media (prefers-color-scheme: dark) { .side-head { color: #12161b; } }
+  .side-head h2 { margin: 0; font-size: 19px; } .side-head div { font-size: 12px; opacity: .92; }
+  .side-body { padding: 14px 16px 16px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+  input, select, textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); min-width: 0; }
+  label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 7px; padding: 7px 12px; cursor: pointer; color: #fff; background: var(--ops); }
+  .shop button { background: var(--shop); }
+  @media (prefers-color-scheme: dark) { button { color: #12161b; } }
+  button.secondary { background: transparent !important; color: var(--ink); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: wait; }
+  a.btn { display: inline-block; text-decoration: none; font-weight: 600; border-radius: 7px; padding: 6px 11px; border: 1px solid var(--line); color: var(--ink); }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .card h3 { margin: 0 0 2px; font-size: 14px; } .card p { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; }
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px; }
+  @media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+  .kpi { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .kpi b { display: block; font-size: 20px; line-height: 1.15; } .kpi span { color: var(--muted); font-size: 11.5px; }
+  .kpi.alert b { color: var(--warn); }
+  .scroll { max-height: 560px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line);
+       position: sticky; top: 0; background: var(--panel); white-space: nowrap; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.click { cursor: pointer; } tr.click:hover td { background: var(--bg); } tr.selected td { background: var(--sel); }
+  .mono { font-family: var(--mono); font-size: 12px; } .muted { color: var(--muted); } .small { font-size: 12px; }
+  .tabs { display: flex; gap: 2px; margin-bottom: -1px; flex-wrap: wrap; }
+  .tab { background: transparent !important; color: var(--muted) !important; border: 1px solid transparent !important; border-radius: 9px 9px 0 0; padding: 7px 12px; }
+  .tab.active { background: var(--panel) !important; color: var(--ink) !important; border-color: var(--line) !important; border-bottom-color: var(--panel) !important; }
+  .tabbody { border: 1px solid var(--line); border-radius: 0 10px 10px 10px; padding: 12px; overflow-x: auto; }
+  .bar { height: 10px; border-radius: 5px; background: var(--ops); min-width: 3px; }
+  .bar.High { background: var(--bad); } .bar.Medium { background: var(--warn); } .bar.Low { background: var(--muted); }
+  pre { background: var(--bg); border-radius: 8px; padding: 10px; white-space: pre-wrap; font: 12px/1.45 var(--mono); max-height: 360px; overflow: auto; margin: 6px 0 0; }
+  .detail { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .detail h3 { margin: 0 0 4px; font-size: 15px; }
+  .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+  .logbar { margin: 0 24px 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  @media (max-width: 1100px) { .logbar { margin: 0 16px 16px; } }
+  .log { font: 12px/1.5 var(--mono); max-height: 140px; overflow: auto; }
+  .log div { border-bottom: 1px solid var(--line); padding: 2px 0; } .log .err { color: var(--bad); } .log .t { color: var(--muted); margin-right: 6px; }
+  .quote-out { margin-top: 10px; }
+  .big { font-size: 26px; font-weight: 700; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Catalogue Ops Demo · The Print Company</h1>
+    <div class="sub">Left: the live Shopify catalogue (public data). Right: tools built on it for Shopify upkeep, SEO and the Claude "AI brain".</div>
+  </div>
+  <span class="chip" id="dataInfo"></span>
+</header>
+
+<div class="split">
+  <section class="side shop">
+    <div class="side-head">
+      <h2>Shopify store · theprintcompany.co.nz</h2>
+      <div>Real public catalogue (products.json) · read-only · nothing is changed on the website</div>
+    </div>
+    <div class="side-body">
+      <div class="row">
+        <label style="flex:1">Search<input id="q" placeholder="business cards, tote, sticker..."></label>
+        <label>Type<select id="typeFilter"></select></label>
+        <label>Show<select id="flagFilter">
+          <option value="">All products</option><option value="no_type">No product type</option>
+          <option value="no_sku">Variants without SKU</option><option value="no_alt">Images without alt</option>
+        </select></label>
+      </div>
+      <div class="muted small" id="count"></div>
+      <div class="scroll" id="productList"></div>
+      <div class="detail" id="detail"><span class="muted">Click a product to see its variants, SKUs and image alt text.</span></div>
+    </div>
+  </section>
+
+  <section class="side ops">
+    <div class="side-head">
+      <h2>Ops toolkit</h2>
+      <div>Data-quality checks with suggested fixes · AI brain files for Claude · quote helper · change log</div>
+    </div>
+    <div class="side-body">
+      <div class="cards">
+        <div class="card"><h3>Sync the catalogue</h3><p>Reads the public catalogue (a few requests) and saves an offline copy.</p>
+          <div class="row" style="margin:0"><button data-action="fetch_live">Fetch live data</button>
+          <button class="secondary" data-action="load_snapshot">Use offline copy</button></div></div>
+        <div class="card"><h3>Detect website changes</h3><p>Demo: apply made-up edits to a local copy and see what the next sync reports.</p>
+          <button class="secondary" data-action="simulate">Simulate a change</button></div>
+        <div class="card"><h3>Downloads</h3><p>Fix list for Shopify, and files for a Claude Project or skill.</p>
+          <div class="row" style="margin:0"><a class="btn" href="/download/fixes.csv">Fix list CSV</a></div></div>
+      </div>
+      <div class="kpis" id="kpis"></div>
+      <div class="tabs">
+        <button class="tab active" data-tab="quality">Data quality</button>
+        <button class="tab" data-tab="brain">AI brain</button>
+        <button class="tab" data-tab="quote">Quote helper</button>
+        <button class="tab" data-tab="changes">Changes</button>
+      </div>
+      <div class="tabbody" id="tabbody"></div>
+    </div>
+  </section>
+</div>
+
+<div class="logbar">
+  <div class="row" style="justify-content:space-between;margin:0 0 6px"><b>Activity log</b><span class="muted small">newest first</span></div>
+  <div class="log" id="log"><div class="muted">Ready.</div></div>
+</div>
+
+<script>
+let S = null, tab = "quality", selected = null, ruleFilter = "", quoteState = { handle: "", detail: null };
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money = (v) => v == null ? "-" : "$" + Number(v).toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (a, b) => b ? Math.round(100 * a / b) + "%" : "0%";
+const short = (t) => t ? t.replace("T", " ").replace("Z", "") : "-";
+
+async function refresh() {
+  try {
+    const r = await fetch("/api/state");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    S = await r.json();
+    if (!S.products) throw new Error("the running dashboard.py is an older version; restart it");
+  } catch (e) { addLog(["ERROR: could not load data: " + e.message], true); return; }
+  const run = S.runs[0];
+  $("#dataInfo").textContent = run ? `Data: ${run.source} · fetched ${short(run.fetched_at)}` : "No data yet";
+  const types = [...new Set(S.products.map(p => p.product_type || "(none)"))].sort();
+  const keep = $("#typeFilter").value;
+  $("#typeFilter").innerHTML = `<option value="">All types</option>` + types.map(t => `<option>${esc(t)}</option>`).join("");
+  $("#typeFilter").value = keep;
+  renderKpis(); renderList(); renderTab();
+}
+
+function renderKpis() {
+  const k = S.kpi;
+  const items = [["Products", k.products], ["Variants", k.variants],
+    ["Variants without SKU", `${k.no_sku} <span class="muted small">(${pct(k.no_sku, k.variants)})</span>`, k.no_sku],
+    ["Images without alt", `${k.no_alt} <span class="muted small">(${pct(k.no_alt, k.images)})</span>`, k.no_alt],
+    ["Products without type", k.no_type, k.no_type]];
+  $("#kpis").innerHTML = items.map(([l, v, a]) => `<div class="kpi${a ? " alert" : ""}"><b>${v}</b><span>${l}</span></div>`).join("");
+}
+
+function renderList() {
+  if (!S.products.length) {
+    $("#productList").innerHTML = `<div class="empty">No catalogue yet. Click "Fetch live data" on the right.</div>`;
+    $("#count").textContent = ""; return;
+  }
+  const q = $("#q").value.trim().toLowerCase(), t = $("#typeFilter").value, f = $("#flagFilter").value;
+  const rows = S.products.filter(p => (!q || p.title.toLowerCase().includes(q) || (p.tags || "").toLowerCase().includes(q))
+    && (!t || (p.product_type || "(none)") === t)
+    && (!f || (f === "no_type" ? !p.product_type : p[f] > 0)));
+  $("#count").textContent = `${rows.length} of ${S.products.length} products`;
+  $("#productList").innerHTML = `<table><thead><tr><th>Product</th><th class="num">Variants</th><th class="num">Price</th><th>Checks</th></tr></thead><tbody>
+    ${rows.map(p => `<tr class="click${p.handle === selected ? " selected" : ""}" data-handle="${esc(p.handle)}">
+      <td>${esc(p.title)}<div>${p.product_type ? `<span class="chip shop">${esc(p.product_type)}</span>` : `<span class="chip warn">no type</span>`}</div></td>
+      <td class="num">${p.variants}</td>
+      <td class="num">${money(p.min_price)}${p.max_price !== p.min_price ? `<div class="muted small">to ${money(p.max_price)}</div>` : ""}</td>
+      <td>${p.no_sku ? `<span class="chip warn">${p.no_sku} no SKU</span> ` : ""}${p.no_alt ? `<span class="chip warn">${p.no_alt} no alt</span> ` : ""}${!p.available ? `<span class="chip bad">sold out</span>` : ""}${!p.no_sku && !p.no_alt && p.product_type ? `<span class="chip ok">OK</span>` : ""}</td>
+    </tr>`).join("")}</tbody></table>`;
+}
+
+async function showDetail(handle) {
+  selected = handle; renderList();
+  const d = await (await fetch("/api/product?handle=" + encodeURIComponent(handle))).json();
+  const opts = d.options.filter(o => o.name !== "Title");
+  $("#detail").innerHTML = `<h3>${esc(d.product.title)}</h3>
+    <div class="small muted">${esc(d.product.product_type || "no product type")} · ${d.variants.length} variants · ${d.images.length} images ·
+      <a href="${S.base_url}/products/${esc(handle)}" target="_blank" rel="noopener">open on website</a></div>
+    ${opts.length ? `<div class="small" style="margin-top:6px">${opts.map(o => `<b>${esc(o.name)}:</b> ${esc(o.values.slice(0, 10).join(", "))}${o.values.length > 10 ? " …" : ""}`).join("<br>")}</div>` : ""}
+    <table style="margin-top:8px"><thead><tr><th>Variant</th><th>SKU</th><th class="num">Price</th></tr></thead><tbody>
+    ${d.variants.slice(0, 12).map(v => `<tr><td>${esc(v.title)}</td><td class="mono">${v.sku ? esc(v.sku) : '<span class="chip warn">missing</span>'}</td><td class="num">${money(v.price)}</td></tr>`).join("")}
+    </tbody></table>${d.variants.length > 12 ? `<div class="note">+ ${d.variants.length - 12} more variants</div>` : ""}
+    <div class="small" style="margin-top:8px"><b>Image alt text:</b> ${d.images.map(i => i.alt ? `<span class="chip ok">${esc(i.alt)}</span>` : `<span class="chip warn">#${i.position} empty</span>`).join(" ") || "no images"}</div>
+    <div class="row" style="margin:10px 0 0"><button class="secondary" id="quoteThis">Quote this product</button></div>`;
+  $("#quoteThis").onclick = () => { tab = "quote"; quoteState.handle = handle; renderTab(); };
+}
+
+function renderTab() {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+  ({ quality: tabQuality, brain: tabBrain, quote: tabQuote, changes: tabChanges })[tab]();
+}
+
+function tabQuality() {
+  if (!S.rules.length) { $("#tabbody").innerHTML = `<div class="empty">Sync the catalogue to run the checks.</div>`; return; }
+  const max = Math.max(...S.rules.map(r => r.n));
+  const list = S.issues.filter(i => !ruleFilter || i.rule === ruleFilter);
+  $("#tabbody").innerHTML = `<table><thead><tr><th>Check</th><th>Severity</th><th class="num">Products</th><th style="width:35%"></th></tr></thead><tbody>
+    ${S.rules.map(r => `<tr class="click${r.rule === ruleFilter ? " selected" : ""}" data-rule="${esc(r.rule)}"><td><b>${esc(r.rule)}</b></td>
+      <td><span class="chip ${r.severity === "High" ? "bad" : r.severity === "Medium" ? "warn" : ""}">${r.severity}</span></td>
+      <td class="num">${r.n}</td><td><div class="bar ${r.severity}" style="width:${100 * r.n / max}%"></div></td></tr>`).join("")}
+    </tbody></table>
+    <p class="note">Click a check to filter. Suggestions are drafts to review in Shopify; nothing is changed automatically. The CSV lists every variant and image.</p>
+    <h3 style="margin:14px 0 6px;font-size:14px">${ruleFilter ? esc(ruleFilter) : "All findings"} <span class="muted small">(${list.length})</span></h3>
+    <div class="scroll" style="max-height:330px"><table><thead><tr><th>Product</th><th>Check</th><th>Where</th><th>Suggested fix</th></tr></thead><tbody>
+    ${list.slice(0, 300).map(i => `<tr class="click" data-handle="${esc(i.handle)}"><td>${esc(i.title)}</td><td>${esc(i.rule)}</td>
+      <td class="small">${esc(i.target)}${i.current ? `<div class="muted">${esc(i.current)}</div>` : ""}</td><td class="small">${esc(i.suggestion)}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+
+function tabBrain() {
+  const files = S.brain_files.map(f => `<a class="btn" href="/download/brain/${f.name}">${f.name} <span class="muted small">${f.kb} KB</span></a>`).join(" ");
+  $("#tabbody").innerHTML = `<p style="margin-top:0">Generated from the catalogue after every sync, so the Claude "AI brain" always has current products and prices.</p>
+    <div class="row">${files || '<span class="muted">Sync first.</span>'}</div>
+    <ul class="small" style="margin:4px 0 10px;padding-left:18px">
+      <li><b>products.md</b>: product guide by type, for a Claude Project's knowledge.</li>
+      <li><b>pricing.json</b>: every variant and price, so quotes use exact figures.</li>
+      <li><b>SKILL.md</b>: a draft Claude skill for quote replies, using pricing.json.</li></ul>
+    <b class="small">products.md (first lines)</b><pre>${esc(S.brain_preview)}</pre>
+    <b class="small">SKILL.md</b><pre>${esc(S.skill)}</pre>`;
+}
+
+async function tabQuote() {
+  if (!S.products.length) { $("#tabbody").innerHTML = `<div class="empty">Sync the catalogue first.</div>`; return; }
+  if (!quoteState.handle) quoteState.handle = selected || S.products[0].handle;
+  $("#tabbody").innerHTML = `<p style="margin-top:0">Pick a product and options: the price comes from the synced catalogue, and a reply is drafted for a person to check and send.</p>
+    <div class="row"><label style="flex:1">Product<select id="qProduct">${S.products.map(p => `<option value="${esc(p.handle)}">${esc(p.title)}</option>`).join("")}</select></label></div>
+    <div class="row" id="qOptions"></div>
+    <div class="row"><label>Customer name<input id="qCustomer" value="Sam"></label><label>Signed by<input id="qSender" value="Liv"></label>
+      <button id="qGo">Draft reply</button></div>
+    <div id="qOut"></div>`;
+  $("#qProduct").value = quoteState.handle;
+  const load = async () => {
+    quoteState.handle = $("#qProduct").value;
+    quoteState.detail = await (await fetch("/api/product?handle=" + encodeURIComponent(quoteState.handle))).json();
+    const opts = quoteState.detail.options;
+    $("#qOptions").innerHTML = opts.filter(o => o.name !== "Title").map((o, i) =>
+      `<label>${esc(o.name)}<select data-opt="${i}">${o.values.map(v => `<option>${esc(v)}</option>`).join("")}</select></label>`).join("")
+      || `<span class="muted small">Single option product.</span>`;
+    $("#qOut").innerHTML = "";
+  };
+  $("#qProduct").onchange = load;
+  $("#qGo").onclick = async () => {
+    const opts = quoteState.detail.options;
+    const chosen = opts.map((o, i) => o.name === "Title" ? "Default Title" : document.querySelector(`[data-opt="${i}"]`).value);
+    const res = await (await fetch("/api/action/quote", { method: "POST", body: JSON.stringify({
+      handle: quoteState.handle, options: chosen, customer: $("#qCustomer").value, sender: $("#qSender").value }) })).json();
+    if (res.error) { $("#qOut").innerHTML = `<p class="chip bad">${esc(res.error)}</p>`; return; }
+    $("#qOut").innerHTML = `<div class="quote-out"><span class="big">${res.price == null ? "Price on request" : money(res.price)}</span>
+      ${res.sku ? `<span class="chip">${esc(res.sku)}</span>` : `<span class="chip warn">no SKU</span>`}
+      ${res.available ? `<span class="chip ok">available</span>` : `<span class="chip bad">unavailable online</span>`}
+      <pre id="qText">${esc(res.text)}</pre><div class="row" style="margin-top:6px"><button class="secondary" id="qCopy">Copy reply</button>
+      <span class="muted small">Check: are website prices incl. or excl. GST?</span></div></div>`;
+    $("#qCopy").onclick = () => navigator.clipboard.writeText(res.text).then(() => addLog(["Reply copied to clipboard."]));
+  };
+  await load();
+}
+
+function tabChanges() {
+  const rows = S.changes.map(c => `<tr><td class="mono muted">${short(c.at)}</td><td>${esc(c.title)}</td>
+    <td><span class="chip ${c.kind === "new" ? "ok" : c.kind === "removed" ? "bad" : "warn"}">${esc(c.kind)}</span></td><td>${esc(c.detail)}</td></tr>`).join("");
+  const runs = S.runs.map(r => `<tr><td class="mono muted">${short(r.at)}</td><td><span class="chip ${r.source === "live" ? "shop" : r.source === "simulated" ? "warn" : ""}">${esc(r.source)}</span></td>
+    <td class="num">${r.products}</td><td class="num">${r.variants}</td><td class="num">${r.changes}</td></tr>`).join("");
+  $("#tabbody").innerHTML = `<p style="margin-top:0">Each sync is compared with the previous one, so price, availability and range changes on the website are spotted automatically.</p>
+    ${rows ? `<table><thead><tr><th>When (UTC)</th><th>Product</th><th>Change</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`
+           : `<div class="empty">No changes yet. Try "Simulate a change".</div>`}
+    <h3 style="margin:14px 0 6px;font-size:14px">Sync runs</h3>
+    <table><thead><tr><th>When (UTC)</th><th>Source</th><th class="num">Products</th><th class="num">Variants</th><th class="num">Changes</th></tr></thead><tbody>${runs}</tbody></table>`;
+}
+
+function addLog(lines, err) {
+  const t = new Date().toLocaleTimeString();
+  const log = $("#log");
+  if (log.children.length === 1 && log.firstElementChild.classList.contains("muted")) log.innerHTML = "";
+  log.insertAdjacentHTML("afterbegin", lines.map(l => `<div class="${err || l.startsWith("ERROR") ? "err" : ""}"><span class="t">${t}</span>${esc(l)}</div>`).join(""));
+}
+
+async function run(action) {
+  document.querySelectorAll("button[data-action]").forEach(b => b.disabled = true);
+  try {
+    const res = await (await fetch("/api/action/" + action, { method: "POST", body: "{}" })).json();
+    addLog(res.log.length ? res.log : ["Done."], !res.ok);
+    if (action === "simulate") tab = "changes";
+    await refresh();
+  } catch (e) { addLog(["ERROR: " + e.message], true); }
+  finally { document.querySelectorAll("button[data-action]").forEach(b => b.disabled = false); }
+}
+
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("button[data-action]"); if (a && !a.disabled) return run(a.dataset.action);
+  const t = e.target.closest(".tab"); if (t) { tab = t.dataset.tab; return renderTab(); }
+  const r = e.target.closest("tr[data-rule]"); if (r) { ruleFilter = ruleFilter === r.dataset.rule ? "" : r.dataset.rule; return tabQuality(); }
+  const p = e.target.closest("tr[data-handle]"); if (p) return showDetail(p.dataset.handle);
+});
+["#q", "#typeFilter", "#flagFilter"].forEach(id => $(id).addEventListener("input", renderList));
+refresh();
+</script>
+</body>
+</html>

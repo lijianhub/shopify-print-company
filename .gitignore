@@ -1,0 +1,8 @@
+# Store content and generated files stay local (never published)
+data_cache/
+ai_brain/
+output/
+__pycache__/
+*.pyc
+*.db
+.env
