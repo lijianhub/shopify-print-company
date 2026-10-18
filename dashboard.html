@@ -139,7 +139,8 @@
 </div>
 
 <script>
-let S = null, tab = "quality", selected = null, ruleFilter = "", quoteState = { handle: "", detail: null };
+const TABS = ["quality", "brain", "quote", "changes"];
+let S = null, tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "quality", selected = null, ruleFilter = "", quoteState = { handle: "", detail: null };
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const money = (v) => v == null ? "-" : "$" + Number(v).toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
