@@ -73,6 +73,16 @@
   .log { font: 12px/1.5 var(--mono); max-height: 140px; overflow: auto; }
   .log div { border-bottom: 1px solid var(--line); padding: 2px 0; } .log .err { color: var(--bad); } .log .t { color: var(--muted); margin-right: 6px; }
   .quote-out { margin-top: 10px; }
+  .guide { margin: 0 24px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+           display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; }
+  @media (max-width: 1100px) { .guide { margin: 0 16px 14px; grid-template-columns: 1fr; } }
+  .steps { display: flex; gap: 6px; flex-wrap: wrap; }
+  .step { background: transparent !important; color: var(--muted) !important; border: 1px solid var(--line) !important; padding: 5px 10px; font-size: 13px; }
+  .step.done { color: var(--ink) !important; }
+  .step.current { background: var(--ops) !important; color: #fff !important; border-color: var(--ops) !important; }
+  .say { font-size: 15px; } .say b { color: var(--ops); } .say .muted { font-size: 12.5px; display: block; margin-top: 2px; }
+  .pulse { animation: pulse 1.2s ease-in-out 3; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 5px var(--warn-soft); outline: 2px solid var(--warn); } }
   .big { font-size: 26px; font-weight: 700; }
 </style>
 </head>
@@ -84,6 +94,12 @@
   </div>
   <span class="chip" id="dataInfo"></span>
 </header>
+
+<div class="guide" id="guide">
+  <div class="steps" id="steps"></div>
+  <div class="say" id="say"></div>
+  <div class="row" style="margin:0"><button class="secondary" id="prevStep">◀ Back</button><button id="nextStep">Next ▶</button></div>
+</div>
 
 <div class="split">
   <section class="side shop">
@@ -314,6 +330,56 @@ document.addEventListener("click", (e) => {
   const p = e.target.closest("tr[data-handle]"); if (p) return showDetail(p.dataset.handle);
 });
 ["#q", "#typeFilter", "#flagFilter"].forEach(id => $(id).addEventListener("input", renderList));
+// ---------- demo guide: one click per step, with what to say ----------
+const STEPS = [
+  { label: "Catalogue", say: "This is your real Shopify catalogue, read from the public product feed. Read-only: nothing on the website changes.",
+    hint: "Point at the left side. Type 'business cards' in Search.", run: async () => { tab = "quality"; ruleFilter = ""; renderTab(); pulse("#q"); } },
+  { label: "Data quality", say: "90% of variants have no SKU, and none of the product images have alt text. Every issue comes with a suggested fix.",
+    hint: "Point at the numbers, then the list below.", run: async () => { tab = "quality"; ruleFilter = "Images without alt text"; renderTab(); pulse("#kpis"); } },
+  { label: "Fix list", say: "One click gives a CSV of every variant and image to fix, ready for Shopify.",
+    hint: "Optional: click 'Fix list CSV'. Mention: the 83 $0 items are quote-only, so they're flagged, not treated as errors.",
+    run: async () => { tab = "quality"; ruleFilter = "Price on request ($0)"; renderTab(); pulse("a[href='/download/fixes.csv']"); } },
+  { label: "AI brain", say: "After every sync it regenerates the files your Claude AI brain needs: a product guide, every price, and a quote-reply skill.",
+    hint: "Scroll the preview to show products.md and SKILL.md.", run: async () => { tab = "brain"; renderTab(); } },
+  { label: "Quote helper", say: "Pick a product and options: the exact website price, and a drafted reply for a person to check and send.",
+    hint: "Then pick 'Bio-mailing Bag': quote-only items get a custom-quote reply, never $0.", run: async () => {
+      tab = "quote"; const bc = S.products.find(p => p.handle === "standard-business-cards-300gsm");
+      if (bc) quoteState.handle = bc.handle; document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x.dataset.tab === tab));
+      await tabQuote(); const go = document.querySelector("#qGo"); if (go) go.click(); } },
+  { label: "Changes", say: "When prices or products change on the website, the next sync spots it automatically. This is a simulated change on a local copy.",
+    hint: "Point at the price, availability and new-product rows.", run: async () => { await run("simulate"); tab = "changes"; renderTab(); } },
+  { label: "Wrap up", say: "Next steps: run it on a schedule, for example with n8n, which I'd learn on the job, and write approved fixes back to Shopify.",
+    hint: "Data has been restored to the real catalogue.", run: async () => { await run("load_snapshot"); tab = "quality"; ruleFilter = ""; renderTab(); } },
+];
+let stepIdx = -1;
+
+function pulse(sel) {
+  const el = document.querySelector(sel); if (!el) return;
+  el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse");
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function renderGuide() {
+  $("#steps").innerHTML = STEPS.map((s, i) =>
+    `<button class="step${i === stepIdx ? " current" : i < stepIdx ? " done" : ""}" data-step="${i}">${i + 1}. ${s.label}</button>`).join("");
+  $("#say").innerHTML = stepIdx < 0
+    ? `<b>Demo guide</b> · click <b>Next</b> to start. Each step opens the right view and shows what to say.`
+    : `<b>Say:</b> “${esc(STEPS[stepIdx].say)}”<span class="muted">${esc(STEPS[stepIdx].hint)}</span>`;
+  $("#prevStep").disabled = stepIdx <= 0;
+  $("#nextStep").textContent = stepIdx >= STEPS.length - 1 ? "Restart ↺" : "Next ▶";
+}
+
+async function goStep(i) {
+  if (!S || !S.products.length) { addLog(["Load the catalogue first: click 'Fetch live data' or 'Use offline copy'."], true); return; }
+  stepIdx = i; renderGuide();
+  try { await STEPS[i].run(); } catch (e) { addLog(["ERROR: " + e.message], true); }
+}
+
+$("#nextStep").onclick = () => goStep(stepIdx >= STEPS.length - 1 ? 0 : stepIdx + 1);
+$("#prevStep").onclick = () => { if (stepIdx > 0) goStep(stepIdx - 1); };
+$("#steps").addEventListener("click", (e) => { const b = e.target.closest("[data-step]"); if (b) goStep(Number(b.dataset.step)); });
+renderGuide();
+
 refresh();
 </script>
 </body>

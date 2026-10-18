@@ -181,6 +181,8 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path in ("/", "/index.html"):
             return self._send(200, PAGE_HTML, "text/html; charset=utf-8")
+        if u.path == "/favicon.ico":
+            return self._send(204, b"", "image/x-icon")
         with _lock:
             if u.path == "/api/state":
                 return self._send(200, state())

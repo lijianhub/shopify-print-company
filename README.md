@@ -36,7 +36,9 @@ cd tpc_catalogue_demo
 python dashboard.py
 ```
 
-Opens **http://localhost:8001**. Click **Fetch live data** once (it saves an offline copy), then explore:
+Opens **http://localhost:8001**. Click **Fetch live data** once (it saves an offline copy).
+
+**Demo guide:** the bar at the top walks through the demo in 7 steps. Click **Next** and each step opens the right view, runs the action and shows a one-line talking point. Or explore freely:
 
 1. **Left:** browse the real catalogue. Filter by "No product type", "Variants without SKU" or "Images without alt", and click a product to see its variants, SKUs and alt text.
 2. **Data quality:** click a check to list affected products with suggested fixes. **Fix list CSV** downloads every variant and image to fix.
