@@ -14,7 +14,7 @@ Built with Claude Code. Python standard library only; nothing to install.
 | **Data-quality checks** | Missing SKUs, missing image alt text, products without a type, short descriptions, inconsistent option names (Colour/Color), duplicate titles, $0 "price on request" items, each with a suggested fix and a CSV fix list | Cleaner Shopify data, better search and accessibility, easier stock and reporting |
 | **AI brain files** | `products.md` (product guide by type), `pricing.json` (every variant and price), `SKILL.md` (draft Claude skill for quote replies) | Claude answers from exact, current prices instead of guessing |
 | **Quote helper** | Pick a product and options: exact price plus a drafted reply for a person to check and send; quote-only items get a "custom quote" reply instead of $0 | Faster, consistent quote replies |
-| **SEO page check** (`seo_audit.py`) | Broken internal links, missing meta descriptions and H1s, image alt text, duplicate titles across pages | Quick SEO wins and a tidy site |
+| **SEO page check** (SEO tab, `seo_audit.py`) | Broken internal links, missing meta descriptions and H1s, image alt text, duplicate titles across pages; runs in the background with progress, results kept for the next visit | Quick SEO wins and a tidy site |
 
 ## Snapshot of findings (18 October 2026)
 
@@ -38,21 +38,22 @@ python dashboard.py
 
 Opens **http://localhost:8001**. Click **Fetch live data** once (it saves an offline copy).
 
-**Demo guide:** the bar at the top walks through the demo in 7 steps. Click **Next** and each step opens the right view, runs the action and shows a one-line talking point. Or explore freely:
+**Demo guide:** the bar at the top walks through the demo in 8 steps. Click **Next** and each step opens the right view, runs the action and shows a one-line talking point. Or explore freely:
 
 1. **Left:** browse the real catalogue. Filter by "No product type", "Variants without SKU" or "Images without alt", and click a product to see its variants, SKUs and alt text.
 2. **Data quality:** click a check to list affected products with suggested fixes. **Fix list CSV** downloads every variant and image to fix.
-3. **AI brain:** download `products.md`, `pricing.json` and `SKILL.md` for a Claude Project or skill.
-4. **Quote helper:** choose a product and options, draft a reply, copy it.
-5. **Changes:** click **Simulate a change** to see how the next sync reports price, availability and new-product changes (applied to a local copy only).
+3. **SEO:** broken links, pages without meta descriptions or H1, with fixes. **Run SEO check** re-checks the live site in the background (about 4 minutes); **Report** and **CSV** open the full results.
+4. **AI brain:** download `products.md`, `pricing.json` and `SKILL.md` for a Claude Project or skill.
+5. **Quote helper:** choose a product and options, draft a reply, copy it.
+6. **Changes:** click **Simulate a change** to see how the next sync reports price, availability and new-product changes (applied to a local copy only).
 
-SEO page check (about 4 minutes, polite rate):
+The SEO check can also run from the command line (about 4 minutes, polite rate):
 
 ```
 python seo_audit.py https://theprintcompany.co.nz --max-per-type 30
 ```
 
-Writes `output/report.html` and `output/issues.csv`.
+Writes `data_cache/seo/report.html`, `issues.csv` and `results.json`, which the SEO tab reads.
 
 Requirements: Python 3.9 or later. Without internet, use **Use offline copy** after one successful fetch.
 

@@ -140,6 +140,7 @@
       <div class="kpis" id="kpis"></div>
       <div class="tabs">
         <button class="tab active" data-tab="quality">Data quality</button>
+        <button class="tab" data-tab="seo">SEO</button>
         <button class="tab" data-tab="brain">AI brain</button>
         <button class="tab" data-tab="quote">Quote helper</button>
         <button class="tab" data-tab="changes">Changes</button>
@@ -155,7 +156,7 @@
 </div>
 
 <script>
-const TABS = ["quality", "brain", "quote", "changes"];
+const TABS = ["quality", "seo", "brain", "quote", "changes"];
 let S = null, tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "quality", selected = null, ruleFilter = "", quoteState = { handle: "", detail: null };
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -225,7 +226,7 @@ async function showDetail(handle) {
 
 function renderTab() {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
-  ({ quality: tabQuality, brain: tabBrain, quote: tabQuote, changes: tabChanges })[tab]();
+  ({ quality: tabQuality, seo: tabSeo, brain: tabBrain, quote: tabQuote, changes: tabChanges })[tab]();
 }
 
 function tabQuality() {
@@ -243,6 +244,45 @@ function tabQuality() {
     ${list.slice(0, 300).map(i => `<tr class="click" data-handle="${esc(i.handle)}"><td>${esc(i.title)}</td><td>${esc(i.rule)}</td>
       <td class="small">${esc(i.target)}${i.current ? `<div class="muted">${esc(i.current)}</div>` : ""}</td><td class="small">${esc(i.suggestion)}</td></tr>`).join("")}
     </tbody></table></div>`;
+}
+
+// ---------- SEO (page-level check, runs in the background) ----------
+let seoTimer = null;
+async function tabSeo() {
+  const d = await (await fetch("/api/seo")).json();
+  if (tab !== "seo") return;
+  const r = d.results;
+  const pctDone = d.total ? Math.round(100 * d.done / d.total) : 0;
+  const status = d.running
+    ? `<div class="row" style="align-items:center"><span class="chip warn">Running</span><span class="small">${esc(d.stage)} ${d.total ? `${d.done} / ${d.total}` : ""}</span></div>
+       <div style="background:var(--line);border-radius:5px;height:8px;margin:-4px 0 12px"><div class="bar" style="width:${pctDone}%;height:8px"></div></div>`
+    : d.error ? `<p class="chip bad">${esc(d.error)}</p>` : "";
+  const head = `<div class="row" style="align-items:center;justify-content:space-between">
+      <span class="small muted">${r ? `Last check: ${short(r.finished_at)} · ${r.pages_checked} pages, ${r.links_checked} links, ${r.requests} polite requests` : "No SEO check yet."}</span>
+      <span class="row" style="margin:0">${r ? `<a class="btn" href="/download/seo_report.html" target="_blank">Report</a><a class="btn" href="/download/seo_issues.csv">CSV</a>` : ""}
+      <button id="seoRun" ${d.running ? "disabled" : ""}>${d.running ? "Running…" : "Run SEO check"}</button></span></div>${status}`;
+  let body = `<div class="empty">Click "Run SEO check": it reads the public sitemap and pages at 1 request per second (about 4 minutes).</div>`;
+  if (r) {
+    const k = [["Broken internal links", r.broken_links, r.broken_links], ["Pages without meta description", r.pages_without_meta, r.pages_without_meta],
+               ["Pages without H1", r.pages_without_h1, r.pages_without_h1], ["Pages checked", r.pages_checked]];
+    body = `<div class="kpis" style="grid-template-columns:repeat(4,1fr)">${k.map(([l, v, a]) => `<div class="kpi${a ? " alert" : ""}"><b>${v}</b><span>${l}</span></div>`).join("")}</div>
+      ${r.groups.map((g, gi) => `<div style="border-top:1px solid var(--line);padding:9px 0">
+        <div class="row" style="margin:0;align-items:center"><span class="chip ${g.severity === "High" ? "bad" : g.severity === "Medium" ? "warn" : ""}">${g.severity}</span>
+          <b>${esc(g.type)}</b><span class="muted small">${g.items.length}</span></div>
+        <div class="muted small" style="margin:2px 0 4px">${esc(g.advice)}</div>
+        <ul class="small" style="margin:0;padding-left:18px">${g.items.slice(0, gi < 2 ? 6 : 3).map(i => `<li><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.url.replace(/^https?:\/\//, ""))}</a>${i.detail ? ` <span class="muted">· ${esc(i.detail)}</span>` : ""}</li>`).join("")}
+        ${g.items.length > (gi < 2 ? 6 : 3) ? `<li class="muted">+ ${g.items.length - (gi < 2 ? 6 : 3)} more in the CSV</li>` : ""}</ul></div>`).join("")}
+      <p class="note">A sample of each page type was checked, so counts are indicative. Each finding should be confirmed in Shopify before changing anything.</p>`;
+  }
+  $("#tabbody").innerHTML = head + body;
+  $("#seoRun").onclick = async () => {
+    const res = await (await fetch("/api/action/seo_run", { method: "POST", body: "{}" })).json();
+    addLog(res.log); tabSeo();
+  };
+  clearTimeout(seoTimer);
+  if (d.running) seoTimer = setTimeout(() => { if (tab === "seo") tabSeo(); else if (d.running) addLog(["SEO check still running in the background."]); }, 2000);
+  else if (window._seoWasRunning) addLog([d.error ? "SEO check failed: " + d.error : "SEO check finished."]);
+  window._seoWasRunning = d.running;
 }
 
 function tabBrain() {
@@ -339,6 +379,9 @@ const STEPS = [
   { label: "Fix list", say: "One click gives a CSV of every variant and image to fix, ready for Shopify.",
     hint: "Optional: click 'Fix list CSV'. Mention: the 83 $0 items are quote-only, so they're flagged, not treated as errors.",
     run: async () => { tab = "quality"; ruleFilter = "Price on request ($0)"; renderTab(); pulse("a[href='/download/fixes.csv']"); } },
+  { label: "SEO", say: "On the site itself, five links in the main menu lead to 404 pages, and about 40 pages have no meta description. Quick wins.",
+    hint: "Open a broken link to show the 404. 'Run SEO check' re-checks the live site in about 4 minutes.",
+    run: async () => { tab = "seo"; renderTab(); } },
   { label: "AI brain", say: "After every sync it regenerates the files your Claude AI brain needs: a product guide, every price, and a quote-reply skill.",
     hint: "Scroll the preview to show products.md and SKILL.md.", run: async () => { tab = "brain"; renderTab(); } },
   { label: "Quote helper", say: "Pick a product and options: the exact website price, and a drafted reply for a person to check and send.",

@@ -10,6 +10,7 @@ Only public pages listed in the sitemap are fetched, at most one request per --d
 import argparse
 import csv
 import html
+import json
 import re
 import sys
 import time
@@ -43,7 +44,7 @@ class Fetcher:
                 body = r.read() if method == "GET" else b""
                 return r.status, r.geturl(), body.decode("utf-8", "replace")
         except urllib.error.HTTPError as e:
-            return e.code, url, ""
+            return e.code, e.geturl() or url, ""
         except Exception as e:  # network error
             return 0, url, str(e)
 
@@ -91,7 +92,7 @@ class PageParser(HTMLParser):
 def sitemap_urls(f, root):
     status, _, body = f.get(urllib.parse.urljoin(root, "/sitemap.xml"))
     if status != 200:
-        sys.exit(f"Could not read sitemap.xml (HTTP {status})")
+        raise RuntimeError(f"Could not read sitemap.xml (HTTP {status})")
     by_type = defaultdict(list)
     for loc in ET.fromstring(body).findall("sm:sitemap/sm:loc", NS):
         child = loc.text.strip()
@@ -103,13 +104,17 @@ def sitemap_urls(f, root):
     return by_type
 
 
-def audit(root, max_per_type, delay, out_dir):
+def audit(root, max_per_type, delay, out_dir, log=print, progress=None):
+    """Run the check, write report.html / issues.csv / results.json to out_dir and return the results.
+    progress(done, total, stage) is called as pages and links are checked."""
+    progress = progress or (lambda done, total, stage: None)
     f = Fetcher(delay)
     host = urllib.parse.urlparse(root).netloc.replace("www.", "")
-    print(f"Reading sitemap for {host} ...")
+    log(f"Reading sitemap for {host} ...")
+    progress(0, 1, "Reading sitemap")
     by_type = sitemap_urls(f, root)
     totals = {k: len(v) for k, v in by_type.items()}
-    print("Sitemap URLs:", totals)
+    log(f"Sitemap URLs: {totals}")
 
     issues, pages = [], []
     titles, descs = defaultdict(list), defaultdict(list)
@@ -122,7 +127,8 @@ def audit(root, max_per_type, delay, out_dir):
               for u in urls[:max_per_type] if not re.search(r"\.(md|xml|txt|json)$", u)]
     for i, (kind, url) in enumerate(sample, 1):
         status, final, body = f.get(url)
-        print(f"  [{i}/{len(sample)}] {status} {url}")
+        log(f"  [{i}/{len(sample)}] {status} {url}")
+        progress(i, len(sample), "Checking pages")
         if status != 200:
             issue(url, "Page not loading", "High", f"HTTP {status}")
             continue
@@ -180,15 +186,19 @@ def audit(root, max_per_type, delay, out_dir):
 
     checked = set(p["url"].rstrip("/") for p in pages)
     to_check = [u for u, _ in internal_links.most_common() if u.rstrip("/") not in checked][:120]
-    print(f"Checking {len(to_check)} internal links ...")
+    log(f"Checking {len(to_check)} internal links ...")
     broken = 0
-    for u in to_check:
+    for n, u in enumerate(to_check, 1):
+        progress(n, len(to_check), "Checking internal links")
         status, _, _ = f.get(u, method="HEAD")
+        final = u
         if status >= 400 or status == 0:  # some servers answer HEAD differently; confirm with GET
-            status, _, _ = f.get(u)
+            status, final, _ = f.get(u)
         if status >= 400 or status == 0:
             broken += 1
-            issue(u, "Broken internal link", "High", f"HTTP {status}, linked {internal_links[u]} time(s)")
+            via = urllib.parse.urlparse(final).path
+            hop = f", redirects to {via}" if final.rstrip("/") != u.rstrip("/") else ""
+            issue(u, "Broken internal link", "High", f"HTTP {status}{hop}, linked {internal_links[u]} time(s)")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     with open(out_dir / "issues.csv", "w", newline="", encoding="utf-8-sig") as fh:
@@ -197,8 +207,14 @@ def audit(root, max_per_type, delay, out_dir):
         order = {"High": 0, "Medium": 1, "Low": 2}
         w.writerows(sorted(({k: i[k] for k in w.fieldnames} for i in issues), key=lambda r: (order[r["severity"]], r["type"])))
     write_html(out_dir / "report.html", host, totals, pages, issues, len(to_check), f.count)
-    print(f"\nDone: {len(pages)} pages, {len(to_check)} links, {len(issues)} issues, {f.count} requests")
-    print(f"Report: {out_dir / 'report.html'}\nCSV:    {out_dir / 'issues.csv'}")
+    results = {"host": host, "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "sitemap": totals,
+               "pages_checked": len(pages), "links_checked": len(to_check), "requests": f.count,
+               "pages_without_meta": sum(1 for p in pages if not p["desc"]), "pages_without_h1": sum(1 for p in pages if not p["h1"]),
+               "issues": issues, "advice": ADVICE}
+    (out_dir / "results.json").write_text(json.dumps(results), encoding="utf-8")
+    log(f"Done: {len(pages)} pages, {len(to_check)} links, {len(issues)} issues, {f.count} requests")
+    log(f"Report: {out_dir / 'report.html'}  CSV: {out_dir / 'issues.csv'}")
+    return results
 
 
 ADVICE = {
@@ -267,6 +283,6 @@ if __name__ == "__main__":
     ap.add_argument("site")
     ap.add_argument("--max-per-type", type=int, default=40)
     ap.add_argument("--delay", type=float, default=1.0)
-    ap.add_argument("--out", default=str(Path(__file__).parent / "output"))
+    ap.add_argument("--out", default=str(Path(__file__).parent / "data_cache" / "seo"))
     a = ap.parse_args()
     audit(a.site.rstrip("/"), a.max_per_type, a.delay, Path(a.out))

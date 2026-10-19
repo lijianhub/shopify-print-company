@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlparse
 import brain
 import catalog
 import quality
+import seo_audit
 import storefront
 
 BASE_URL = "https://theprintcompany.co.nz"
@@ -26,6 +27,46 @@ HERE = Path(__file__).parent
 DB = HERE / "data_cache" / "catalogue.db"
 PAGE_HTML = (HERE / "dashboard.html").read_bytes()  # read once: page always matches this server's code
 _lock = threading.Lock()
+SEO_DIR = HERE / "data_cache" / "seo"
+_seo = {"running": False, "done": 0, "total": 0, "stage": "", "error": None}
+
+
+def _seo_job():
+    def progress(done, total, stage):
+        _seo.update(done=done, total=total, stage=stage)
+    try:
+        seo_audit.audit(BASE_URL, 30, 1.0, SEO_DIR, log=lambda m: None, progress=progress)
+        _seo["error"] = None
+    except Exception as e:  # shown on the page
+        _seo["error"] = str(e)
+    finally:
+        _seo["running"] = False
+
+
+def start_seo():
+    if _seo["running"]:
+        return False
+    _seo.update(running=True, done=0, total=0, stage="Starting", error=None)
+    threading.Thread(target=_seo_job, daemon=True).start()
+    return True
+
+
+def seo_state():
+    results = None
+    f = SEO_DIR / "results.json"
+    if f.exists():
+        r = json.loads(f.read_text(encoding="utf-8"))
+        order = {"High": 0, "Medium": 1, "Low": 2}
+        groups = {}
+        for i in r["issues"]:
+            g = groups.setdefault(i["type"], {"type": i["type"], "severity": i["severity"],
+                                              "advice": r["advice"].get(i["type"], ""), "items": []})
+            g["items"].append({"url": i["url"], "detail": i["detail"]})
+        results = {k: r[k] for k in ("host", "finished_at", "pages_checked", "links_checked", "requests",
+                                     "pages_without_meta", "pages_without_h1")}
+        results["broken_links"] = len(groups.get("Broken internal link", {}).get("items", []))
+        results["groups"] = sorted(groups.values(), key=lambda g: (order[g["severity"]], -len(g["items"])))
+    return {**_seo, "results": results}
 
 
 def db():
@@ -186,6 +227,12 @@ class Handler(BaseHTTPRequestHandler):
         with _lock:
             if u.path == "/api/state":
                 return self._send(200, state())
+            if u.path == "/api/seo":
+                return self._send(200, seo_state())
+            if u.path == "/download/seo_report.html" and (SEO_DIR / "report.html").exists():
+                return self._send(200, (SEO_DIR / "report.html").read_bytes(), "text/html; charset=utf-8")
+            if u.path == "/download/seo_issues.csv" and (SEO_DIR / "issues.csv").exists():
+                return self._send(200, (SEO_DIR / "issues.csv").read_bytes(), "text/csv; charset=utf-8", "tpc_seo_issues.csv")
             if u.path == "/api/product":
                 d = product_detail(parse_qs(u.query).get("handle", [""])[0])
                 return self._send(200 if d else 404, d or {"error": "not found"})
@@ -206,6 +253,10 @@ class Handler(BaseHTTPRequestHandler):
         with _lock:
             conn = db()
             try:
+                if name == "seo_run":
+                    started = start_seo()
+                    return self._send(200, {"ok": True, "log": ["SEO check started: about 4 minutes at 1 request per second."
+                                                                 if started else "SEO check is already running."]})
                 if name == "quote":
                     return self._send(200, act_quote(conn, log, args))
                 if name not in ACTIONS:
